@@ -1,33 +1,43 @@
 ---
-- name: Add IP range to AWX inventory
+- name: Import an explicitly configured range into your AWX inventory
   hosts: localhost
   gather_facts: false
   vars:
-    awx_url: "http://192.168.1.211:30080"
-    awx_token: "qGnWDjPzC9qn4YjZWzivNJCIGoX64h"
-    inventory_id: 1
-    ip_range_start: 50
-    ip_range_end: 150
-
+    awx_url: "{{ lookup('env', 'AWX_URL') }}"
+    awx_token: "{{ lookup('env', 'AWX_OAUTH_TOKEN') }}"
+    inventory_id: "{{ lookup('env', 'AWX_INVENTORY_ID') | default('0', true) | int }}"
+    ip_prefix: "{{ lookup('env', 'AWX_HOST_PREFIX') }}"
+    ip_range_start: -1
+    ip_range_end: -1
+  pre_tasks:
+    - name: Require independently supplied AWX configuration
+      ansible.builtin.assert:
+        that:
+          - awx_url is match('^https?://')
+          - awx_token | length > 0
+          - inventory_id | int > 0
+          - ip_prefix is match('^([0-9]{1,3}\.){2}[0-9]{1,3}$')
+          - ip_range_start | int >= 1
+          - ip_range_end | int <= 254
+          - ip_range_end | int >= ip_range_start | int
+        fail_msg: Supply your own AWX endpoint, token, inventory and host selection first.
+      no_log: true
   tasks:
-    - name: Add each IP to AWX inventory
-      uri:
+    - name: Import explicitly selected hosts
+      ansible.builtin.uri:
         url: "{{ awx_url }}/api/v2/inventories/{{ inventory_id }}/hosts/"
         method: POST
         headers:
           Authorization: "Bearer {{ awx_token }}"
-          Content-Type: "application/json"
+          Content-Type: application/json
         body_format: json
         body:
-          name: "192.168.1.{{ item }}"
+          name: "{{ ip_prefix }}.{{ item }}"
           enabled: true
-          description: "Imported via IP range"
+          description: Imported from explicitly supplied configuration
           variables: |
-            ansible_host: 192.168.1.{{ item }}
+            ansible_host: {{ ip_prefix }}.{{ item }}
             imported_by: playbook
-            source: ip-range
         status_code: 201
-        return_content: true
-      loop: "{{ range(ip_range_start, ip_range_end + 1) | list }}"
-      loop_control:
-        label: "192.168.1.{{ item }}"
+      no_log: true
+      loop: "{{ range(ip_range_start | int, (ip_range_end | int) + 1) | list }}"

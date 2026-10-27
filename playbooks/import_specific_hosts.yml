@@ -1,56 +1,38 @@
 ---
-- name: Add specific hosts to AWX inventory
+- name: Import an explicit host list into your AWX inventory
   hosts: localhost
   gather_facts: false
   vars:
-    awx_url: "http://192.168.1.211:30080"
-    awx_token: "qGnWDjPzC9qn4YjZWzivNJCIGoX64h"
-    inventory_id: 1
-    hosts_to_add:
-      - { ip: "192.168.1.51",  name: "BKSAL051.local" }
-      - { ip: "192.168.1.52",  name: "BKSAL052.local" }
-      - { ip: "192.168.1.61",  name: "BKSAL061.local" }
-      - { ip: "192.168.1.64",  name: "BKSAL064.local" }
-      - { ip: "192.168.1.66",  name: "BKSAL066.local" }
-      - { ip: "192.168.1.67",  name: "BKSAL067.local" }
-      - { ip: "192.168.1.68",  name: "BKSAL068.local" }
-      - { ip: "192.168.1.69",  name: "BKSAL069.local" }
-      - { ip: "192.168.1.70",  name: "BKSAL070.local" }
-      - { ip: "192.168.1.71",  name: "BKSAL071.local" }
-      - { ip: "192.168.1.72",  name: "BKSAL072.local" }
-      - { ip: "192.168.1.168", name: "BKSAL072.local" }
-      - { ip: "192.168.1.75",  name: "BKSAL075.local" }
-      - { ip: "192.168.1.77",  name: "BKSAL077.local" }
-      - { ip: "192.168.1.79",  name: "BKSAL079.local" }
-      - { ip: "192.168.1.80",  name: "BKSAL080.local" }
-      - { ip: "192.168.1.81",  name: "BKSAL081.local" }
-      - { ip: "192.168.1.83",  name: "BKSAL083.local" }
-      - { ip: "192.168.1.103", name: "BKSAL103.local" }
-      - { ip: "192.168.1.116", name: "BKSAL116.local" }
-      - { ip: "192.168.1.127", name: "BKSAL127.local" }
-      - { ip: "192.168.1.129", name: "BKSAL129.local" }
-      - { ip: "192.168.1.131", name: "BKSAL131.local" }
-      - { ip: "192.168.1.138", name: "BKSAL138.local" }
-
+    awx_url: "{{ lookup('env', 'AWX_URL') }}"
+    awx_token: "{{ lookup('env', 'AWX_OAUTH_TOKEN') }}"
+    inventory_id: "{{ lookup('env', 'AWX_INVENTORY_ID') | default('0', true) | int }}"
+    hosts_to_add: []
+  pre_tasks:
+    - name: Require independently supplied AWX configuration
+      ansible.builtin.assert:
+        that:
+          - awx_url is match('^https?://')
+          - awx_token | length > 0
+          - inventory_id | int > 0
+          - hosts_to_add | length > 0
+        fail_msg: Supply your own AWX endpoint, token, inventory and host selection first.
+      no_log: true
   tasks:
-    - name: Add each host to AWX inventory
-      uri:
+    - name: Import explicitly selected hosts
+      ansible.builtin.uri:
         url: "{{ awx_url }}/api/v2/inventories/{{ inventory_id }}/hosts/"
         method: POST
         headers:
           Authorization: "Bearer {{ awx_token }}"
-          Content-Type: "application/json"
+          Content-Type: application/json
         body_format: json
         body:
           name: "{{ item.name }}"
           enabled: true
-          description: "Imported via playbook"
+          description: Imported from explicitly supplied configuration
           variables: |
             ansible_host: {{ item.ip }}
             imported_by: playbook
-            location: Bangkok
         status_code: 201
-        return_content: true
+      no_log: true
       loop: "{{ hosts_to_add }}"
-      loop_control:
-        label: "{{ item.name }}"
